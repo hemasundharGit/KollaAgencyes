@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAdmin() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isCustomer() {
+      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer';
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Allow reading user documents for login without authentication
+      allow read: if true;
+      
+      // Allow creating new users during signup
+      allow create: if 
+        request.resource.data.keys().hasAll(['email', 'role', 'phone']) &&
+        (request.resource.data.role == 'admin' || request.resource.data.role == 'customer');
+        
+      // Allow users to read and update their own documents
+      allow update: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow admin to write to any user document
+      allow write: if isAdmin();
+    }
+
+    // Customer specific rules
+    match /customers/{customerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Bills collection
+    match /bills/{billId} {
+      allow read: if true;  // Allow reading bills without authentication
+      allow write: if isAdmin();
+    }
+
+    // Allow admin access to everything else
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+} 
