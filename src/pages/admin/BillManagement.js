@@ -1,30 +1,73 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { motion } from 'framer-motion';
-import Layout from '../../components/Layout';
+import BillSearch from '../../components/BillSearch';
+import { useAuth } from '../../hooks/useAuth';
 
 const BillManagement = () => {
+  const { user, loading } = useAuth();
   const [customers, setCustomers] = useState([]);
-  const [stockItems, setStockItems] = useState([]);
   const [bills, setBills] = useState([]);
-  const [selectedCustomer, setSelectedCustomer] = useState('');
-  const [billItems, setBillItems] = useState([]);
-  const [newBillItem, setNewBillItem] = useState({
-    productId: '',
-    quantityBoxes: '',
-    quantityKg: '',
-    costPerKg: 0,
-    total: 0
-  });
+  const [searchResults, setSearchResults] = useState(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [updating, setUpdating] = useState(false);
+  const [selectedBill, setSelectedBill] = useState(null);
+  const [showBillDetails, setShowBillDetails] = useState(false);
 
   useEffect(() => {
-    fetchCustomers();
-    fetchStockItems();
-    fetchBills();
-  }, []);
+    if (!loading && user) {
+      fetchCustomers();
+      fetchAllBills();
+    }
+  }, [user, loading]);
+
+  const fetchAllBills = async () => {
+    try {
+      const billsRef = collection(db, 'bills');
+      const querySnapshot = await getDocs(billsRef);
+      const billsList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setBills(billsList);
+      setSearchResults(null);
+    } catch (error) {
+      setError('Error fetching bills');
+    }
+  };
+
+  const handleSearchResults = (results) => {
+    if (!results) {
+      setSearchResults(null);
+      setSelectedCustomerId(null);
+      return;
+    }
+    setSearchResults(results);
+    setSelectedCustomerId(null);
+  };
+
+  const handleCustomerSelect = async (customerId) => {
+    setSelectedCustomerId(customerId);
+    try {
+      const billsRef = collection(db, 'bills');
+      const q = query(billsRef, where('customerId', '==', customerId));
+      const querySnapshot = await getDocs(q);
+      const customerBills = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setBills(customerBills);
+    } catch (error) {
+      setError('Error fetching customer bills');
+    }
+  };
+
+  const resetToCustomerList = async () => {
+    setSelectedCustomerId(null);
+    await fetchAllBills();
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -41,379 +84,188 @@ const BillManagement = () => {
     }
   };
 
-  const fetchStockItems = async () => {
-    try {
-      const stockRef = collection(db, 'stock');
-      const querySnapshot = await getDocs(stockRef);
-      const items = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setStockItems(items);
-    } catch (error) {
-      setError('Error fetching stock items');
-    }
-  };
-
-  const fetchBills = async () => {
-    try {
-      const billsRef = collection(db, 'bills');
-      const querySnapshot = await getDocs(billsRef);
-      const billsList = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setBills(billsList);
-    } catch (error) {
-      setError('Error fetching bills');
-    }
-  };
-
-  const handleProductSelect = (productId) => {
-    const selectedProduct = stockItems.find(item => item.id === productId);
-    setNewBillItem(prev => ({
-      ...prev,
-      productId,
-      costPerKg: selectedProduct.pricePerKg,
-      total: selectedProduct.pricePerKg * (prev.quantityKg || 0)
-    }));
-  };
-
-  const handleQuantityChange = (e) => {
-    const { name, value } = e.target;
-    const quantity = parseFloat(value) || 0;
-    const costPerKg = newBillItem.costPerKg;
-    
-    setNewBillItem(prev => ({
-      ...prev,
-      [name]: value,
-      total: name === 'quantityKg' ? quantity * costPerKg : prev.total
-    }));
-  };
-
-  const handleAddBillItem = () => {
-    if (!newBillItem.productId || !newBillItem.quantityKg) {
-      setError('Please fill in all required fields');
-      return;
-    }
-
-    const selectedProduct = stockItems.find(item => item.id === newBillItem.productId);
-    setBillItems(prev => [...prev, {
-      ...newBillItem,
-      productName: selectedProduct.name,
-      quantityKg: parseFloat(newBillItem.quantityKg),
-      quantityBoxes: parseFloat(newBillItem.quantityBoxes),
-      costPerKg: parseFloat(newBillItem.costPerKg),
-      total: parseFloat(newBillItem.total)
-    }]);
-
-    setNewBillItem({
-      productId: '',
-      quantityBoxes: '',
-      quantityKg: '',
-      costPerKg: 0,
-      total: 0
-    });
-  };
-
-  const handleCreateBill = async () => {
-    if (!selectedCustomer || billItems.length === 0) {
-      setError('Please select a customer and add bill items');
-      return;
-    }
-
-    try {
-      const grandTotal = billItems.reduce((sum, item) => sum + item.total, 0);
-      
-      await addDoc(collection(db, 'bills'), {
-        customerId: selectedCustomer,
-        items: billItems,
-        grandTotal,
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      });
-
-      setSuccess('Bill created successfully');
-      setSelectedCustomer('');
-      setBillItems([]);
-      fetchBills();
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  const handleUpdateBillStatus = async (billId, newStatus) => {
-    try {
-      await updateDoc(doc(db, 'bills', billId), {
-        status: newStatus
-      });
-      setSuccess('Bill status updated successfully');
-      fetchBills();
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
   return (
-    <Layout requireAuth requireAdmin>
       <div className="space-y-6">
-        <div className="bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
-          <div className="md:grid md:grid-cols-3 md:gap-6">
-            <div className="md:col-span-1">
-              <h3 className="text-lg font-medium leading-6 text-gray-900">Create New Bill</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Create a new bill for a customer.
-              </p>
-            </div>
-            <div className="mt-5 md:mt-0 md:col-span-2">
-              <div className="space-y-6">
-                {/* Customer Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Select Customer
-                  </label>
-                  <select
-                    value={selectedCustomer}
-                    onChange={(e) => setSelectedCustomer(e.target.value)}
-                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  >
-                    <option value="">Select a customer</option>
-                    {customers.map(customer => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+        <BillSearch onBillsFound={handleSearchResults} />
 
-                {/* Add Bill Item Form */}
-                <div className="grid grid-cols-6 gap-6">
-                  <div className="col-span-6 sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Product
-                    </label>
-                    <select
-                      value={newBillItem.productId}
-                      onChange={(e) => handleProductSelect(e.target.value)}
-                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                    >
-                      <option value="">Select a product</option>
-                      {stockItems.map(item => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} - ₹{item.pricePerKg}/kg
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="col-span-6 sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Quantity (Boxes)
-                    </label>
-                    <input
-                      type="number"
-                      name="quantityBoxes"
-                      value={newBillItem.quantityBoxes}
-                      onChange={handleQuantityChange}
-                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      min="0"
-                      step="1"
-                    />
-                  </div>
-
-                  <div className="col-span-6 sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Quantity (KG)
-                    </label>
-                    <input
-                      type="number"
-                      name="quantityKg"
-                      value={newBillItem.quantityKg}
-                      onChange={handleQuantityChange}
-                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-
-                  <div className="col-span-6 sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Cost per KG
-                    </label>
-                    <input
-                      type="number"
-                      value={newBillItem.costPerKg}
-                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      disabled
-                    />
-                  </div>
-
-                  <div className="col-span-6 sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Total
-                    </label>
-                    <input
-                      type="number"
-                      value={newBillItem.total}
-                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                      disabled
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleAddBillItem}
-                  className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        {/* Customer Cards */}
+        {!selectedCustomerId && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            {customers.filter(customer => 
+              !searchResults || searchResults.bills?.some(bill => bill.customerId === customer.id)
+            ).map((customer) => {
+              const customerBills = bills.filter(bill => bill.customerId === customer.id);
+              const customerBillCount = customerBills.length;
+              return (
+                <motion.div
+                  key={customer.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => handleCustomerSelect(customer.id)}
                 >
-                  Add Item
-                </button>
-              </div>
-
-              {/* Bill Items List */}
-              {billItems.length > 0 && (
-                <div className="mt-6">
-                  <h4 className="text-lg font-medium text-gray-900">Bill Items</h4>
-                  <table className="min-w-full divide-y divide-gray-200 mt-2">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Product
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Quantity (Boxes)
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Quantity (KG)
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Cost per KG
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Total
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {billItems.map((item, index) => (
-                        <tr key={index}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {item.productName}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {item.quantityBoxes}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {item.quantityKg}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            ₹{item.costPerKg}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            ₹{item.total}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {error && (
-                <div className="mt-2 text-sm text-red-600">
-                  {error}
-                </div>
-              )}
-
-              {success && (
-                <div className="mt-2 text-sm text-green-600">
-                  {success}
-                </div>
-              )}
-
-              <div className="mt-6">
-                <button
-                  onClick={handleCreateBill}
-                  className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Create Bill
-                </button>
-              </div>
-            </div>
+                  <div className="p-6">
+                    <h3 className="text-lg font-semibold text-gray-900">{customer.name}</h3>
+                    <p className="text-sm text-gray-500">{customer.phone}</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Total Bills: {customerBillCount}
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
-        </div>
+        )}
 
-        {/* Bills List */}
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+        {/* Selected Customer Bills */}
+        {selectedCustomerId && (
+          <div className="mt-6">
+            <button
+              onClick={resetToCustomerList}
+              className="mb-4 text-indigo-600 hover:text-indigo-800 font-medium"
+            >
+              ← Back to Customers
+            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {bills.map((bill) => {
                 const customer = customers.find(c => c.id === bill.customerId);
                 return (
-                  <motion.tr
+                  <motion.div
                     key={bill.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
+                    className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer"
+                    onClick={() => {
+                      setSelectedBill(bill);
+                      setShowBillDetails(true);
+                    }}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {customer?.name || 'Unknown Customer'}
+                    <div className="p-6">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {customer?.name || 'Unknown Customer'}
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Bill #{bill.id.slice(0, 8)}
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${bill.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {bill.status}
+                          </span>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (updating) return;
+                              setUpdating(true);
+                              try {
+                                const billRef = doc(db, 'bills', bill.id);
+                                const newStatus = bill.status === 'paid' ? 'pending' : 'paid';
+                                await updateDoc(billRef, {
+                                  status: newStatus
+                                });
+                                // Update local state
+                                setBills(prevBills =>
+                                  prevBills.map(b =>
+                                    b.id === bill.id ? { ...b, status: newStatus } : b
+                                  )
+                                );
+                              } catch (err) {
+                                setError('Failed to update bill status');
+                                console.error('Error updating bill status:', err);
+                              } finally {
+                                setUpdating(false);
+                              }
+                            }}
+                            className={`px-2 py-1 text-xs font-medium text-white rounded hover:opacity-90 disabled:opacity-50 ${bill.status === 'paid' ? 'bg-orange-600' : 'bg-indigo-600'}`}
+                            disabled={updating}
+                          >
+                            {bill.status === 'paid' ? 'Mark as Pending' : 'Mark as Paid'}
+                          </button>
+                        </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">
-                        {new Date(bill.createdAt).toLocaleDateString()}
+                      <div className="mt-4">
+                        <p className="text-sm text-gray-600">
+                          Date: {new Date(bill.createdAt).toLocaleDateString()}
+                        </p>
+                        <p className="text-lg font-semibold text-gray-900 mt-2">
+                          ₹{bill.grandTotal}
+                        </p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">
-                        ₹{bill.grandTotal}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        bill.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {bill.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleUpdateBillStatus(bill.id, bill.status === 'paid' ? 'pending' : 'paid')}
-                        className={`${
-                          bill.status === 'paid' ? 'text-yellow-600 hover:text-yellow-900' : 'text-green-600 hover:text-green-900'
-                        }`}
-                      >
-                        Mark as {bill.status === 'paid' ? 'Pending' : 'Paid'}
-                      </button>
-                    </td>
-                  </motion.tr>
+                    </div>
+                  </motion.div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bill Details Modal */}
+        {showBillDetails && selectedBill && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <h2 className="text-xl font-semibold">Bill Details</h2>
+                  <button
+                    onClick={() => {
+                      setShowBillDetails(false);
+                      setSelectedBill(null);
+                    }}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="border-b pb-4">
+                    <h3 className="font-medium">Customer Information</h3>
+                    <p className="text-gray-600">{customers.find(c => c.id === selectedBill.customerId)?.name}</p>
+                  </div>
+                  
+                  <div className="border-b pb-4">
+                    <h3 className="font-medium mb-2">Items</h3>
+                    <div className="space-y-2">
+                      {selectedBill.items?.map((item, index) => (
+                        <div key={index} className="flex justify-between">
+                          <span>{item.product} ({item.boxes} boxes) x {item.quantity}</span>
+                          <span>₹{item.total}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span>₹{selectedBill.grandTotal}</span>
+                    </div>
+                    {selectedBill.tax && (
+                      <div className="flex justify-between">
+                        <span>Tax</span>
+                        <span>₹{selectedBill.tax}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-semibold">
+                      <span>Total</span>
+                      <span>₹{selectedBill.grandTotal}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-2 text-sm text-red-600">
+            {error}
+          </div>
+        )}
       </div>
-    </Layout>
   );
 };
 
-export default BillManagement; 
+export default BillManagement;

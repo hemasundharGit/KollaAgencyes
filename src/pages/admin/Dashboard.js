@@ -1,114 +1,69 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { signOut } from 'firebase/auth';
-import { auth } from '../../config/firebase';
-import CustomerManagement from './CustomerManagement';
-import BillManagement from './BillManagement';
-import UploadBill from './UploadBill';
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { FaUserPlus, FaUsers, FaFileInvoiceDollar, FaFileUpload, FaChartBar, FaBoxOpen } from 'react-icons/fa';
 
 const Dashboard = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [activeTab, setActiveTab] = useState('customers');
-  const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-
-  useEffect(() => {
-    // Set active tab based on current path
-    const path = location.pathname.split('/').pop();
-    if (path === 'dashboard' || path === 'admin') {
-      setActiveTab('customers');
-    } else {
-      setActiveTab(path);
+  const cards = [
+    {
+      title: 'Create Product',
+      description: 'Add new products to inventory',
+      icon: <FaBoxOpen className="w-8 h-8 text-orange-500" />,
+      link: '/admin/create-product',
+      color: 'bg-orange-50 hover:bg-orange-100'
+    },
+    {
+      title: 'Manage Customers',
+      description: 'View and manage existing customers',
+      icon: <FaUsers className="w-8 h-8 text-indigo-500" />,
+      link: '/admin/customers',
+      color: 'bg-indigo-50 hover:bg-indigo-100'
+    },
+    {
+      title: 'Bills',
+      description: 'View and manage customer bills',
+      icon: <FaFileInvoiceDollar className="w-8 h-8 text-green-500" />,
+      link: '/admin/bills',
+      color: 'bg-green-50 hover:bg-green-100'
+    },
+    {
+      title: 'Upload Bill',
+      description: 'Create and upload new bills',
+      icon: <FaFileUpload className="w-8 h-8 text-purple-500" />,
+      link: '/admin/upload-bill',
+      color: 'bg-purple-50 hover:bg-purple-100'
+    },
+    {
+      title: 'Stock Report',
+      description: 'View and manage stock inventory',
+      icon: <FaChartBar className="w-8 h-8 text-blue-500" />,
+      link: '/admin/stock-report',
+      color: 'bg-blue-50 hover:bg-blue-100'
     }
-  }, [location]);
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      localStorage.clear();
-      navigate('/login');
-    } catch (error) {
-      console.error('Error logging out:', error);
-    }
-  };
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Navigation Header */}
-      <nav className="bg-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <h1 className="text-xl font-bold text-gray-800">Kolla's Admin Dashboard</h1>
-              </div>
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <Link
-                  to="/admin/customers"
-                  className={`${
-                    activeTab === 'customers'
-                      ? 'border-primary-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  onClick={() => setActiveTab('customers')}
-                >
-                  Customers
-                </Link>
-                <Link
-                  to="/admin/bills"
-                  className={`${
-                    activeTab === 'bills'
-                      ? 'border-primary-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  onClick={() => setActiveTab('bills')}
-                >
-                  Bills
-                </Link>
-                <Link
-                  to="/admin/upload-bill"
-                  className={`${
-                    activeTab === 'upload-bill'
-                      ? 'border-primary-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  onClick={() => setActiveTab('upload-bill')}
-                >
-                  Upload Bill
-                </Link>
+    <div className="p-6">
+      <h1 className="text-3xl font-bold text-gray-900 mb-8">Admin Dashboard</h1>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {cards.map((card, index) => (
+          <Link
+            key={index}
+            to={card.link}
+            className={`${card.color} p-6 rounded-lg shadow-sm transition-all duration-300 transform hover:scale-105`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 rounded-full bg-white shadow-sm">
+                {card.icon}
               </div>
             </div>
-            <div className="flex items-center">
-              <span className="text-gray-700 mr-4">Welcome, {userData.email}</span>
-              <button
-                onClick={handleLogout}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Routes>
-            <Route index element={<CustomerManagement />} />
-            <Route path="customers" element={<CustomerManagement />} />
-            <Route path="bills" element={<BillManagement />} />
-            <Route path="upload-bill" element={<UploadBill />} />
-          </Routes>
-        </motion.div>
-      </main>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">{card.title}</h2>
+            <p className="text-gray-600">{card.description}</p>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 };
 
-export default Dashboard; 
+export default Dashboard;

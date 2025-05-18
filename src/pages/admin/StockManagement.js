@@ -9,7 +9,9 @@ const StockManagement = () => {
   const [newItem, setNewItem] = useState({
     name: '',
     pricePerKg: '',
-    currentStock: ''
+    quantityBags: '',
+    quantityKgs: '',
+    arrivalDate: new Date().toISOString().split('T')[0]
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -50,7 +52,11 @@ const StockManagement = () => {
       await addDoc(collection(db, 'stock'), {
         ...newItem,
         pricePerKg: parseFloat(newItem.pricePerKg),
-        currentStock: parseFloat(newItem.currentStock),
+        quantityBags: parseInt(newItem.quantityBags),
+        quantityKgs: parseFloat(newItem.quantityKgs),
+        availableQuantityBags: parseInt(newItem.quantityBags),
+        availableQuantityKgs: parseFloat(newItem.quantityKgs),
+        arrivalDate: newItem.arrivalDate,
         createdAt: new Date().toISOString()
       });
 
@@ -58,7 +64,9 @@ const StockManagement = () => {
       setNewItem({
         name: '',
         pricePerKg: '',
-        currentStock: ''
+        quantityBags: '',
+        quantityKgs: '',
+        arrivalDate: new Date().toISOString().split('T')[0]
       });
       fetchStockItems();
     } catch (error) {
@@ -140,14 +148,44 @@ const StockManagement = () => {
                   </div>
 
                   <div className="col-span-6 sm:col-span-4">
-                    <label htmlFor="currentStock" className="block text-sm font-medium text-gray-700">
-                      Current Stock (KG)
+                    <label htmlFor="arrivalDate" className="block text-sm font-medium text-gray-700">
+                      Arrival Date
+                    </label>
+                    <input
+                      type="date"
+                      name="arrivalDate"
+                      id="arrivalDate"
+                      value={newItem.arrivalDate}
+                      onChange={handleInputChange}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      required
+                    />
+                  </div>
+
+                  <div className="col-span-6 sm:col-span-4">
+                    <label htmlFor="quantityBags" className="block text-sm font-medium text-gray-700">
+                      Quantity (Bags)
                     </label>
                     <input
                       type="number"
-                      name="currentStock"
-                      id="currentStock"
-                      value={newItem.currentStock}
+                      name="quantityBags"
+                      id="quantityBags"
+                      value={newItem.quantityBags}
+                      onChange={handleInputChange}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      required
+                    />
+                  </div>
+
+                  <div className="col-span-6 sm:col-span-4">
+                    <label htmlFor="quantityKgs" className="block text-sm font-medium text-gray-700">
+                      Quantity (KGs)
+                    </label>
+                    <input
+                      type="number"
+                      name="quantityKgs"
+                      id="quantityKgs"
+                      value={newItem.quantityKgs}
                       onChange={handleInputChange}
                       className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
                       required
@@ -193,7 +231,16 @@ const StockManagement = () => {
                   Price per KG
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Current Stock
+                  Arrival Date
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Available Bags
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Available KGs
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
@@ -214,7 +261,18 @@ const StockManagement = () => {
                     <div className="text-sm text-gray-500">₹{item.pricePerKg}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{item.currentStock} KG</div>
+                    <div className="text-sm text-gray-500">{new Date(item.arrivalDate).toLocaleDateString()}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{item.availableQuantityBags}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{item.availableQuantityKgs}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${item.availableQuantityKgs > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                      {item.availableQuantityKgs > 0 ? 'In Stock' : `${item.name} stock is completed`}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
@@ -300,4 +358,4 @@ const StockManagement = () => {
   );
 };
 
-export default StockManagement; 
+export default StockManagement;

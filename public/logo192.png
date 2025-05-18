@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="192" height="192" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" fill="#ffffff"/>
+  <text x="96" y="96" font-family="Arial" font-size="48" text-anchor="middle" dominant-baseline="middle" fill="#000000">KA</text>
+  <circle cx="96" cy="96" r="80" fill="none" stroke="#000000" stroke-width="8"/>
+</svg>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, updateDoc, doc, increment } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import AdminLayout from '../../components/AdminLayout';
 
 const UploadBill = () => {
   const [customers, setCustomers] = useState([]);
@@ -11,20 +10,27 @@ const UploadBill = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-
-  const products = [
-    'onion',
-    'ragi',
-    'jaggery',
-    'salt',
-    'jonna',
-    'sagga',
-    'tamrind'
-  ];
+  const [availableStock, setAvailableStock] = useState([]);
 
   useEffect(() => {
     fetchCustomers();
+    fetchAvailableStock();
   }, []);
+
+  const fetchAvailableStock = async () => {
+    try {
+      const stockRef = collection(db, 'stock');
+      const querySnapshot = await getDocs(stockRef);
+      const stockItems = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAvailableStock(stockItems);
+    } catch (error) {
+      console.error('Error fetching stock:', error);
+      setError('Error loading available stock');
+    }
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -94,6 +100,17 @@ const UploadBill = () => {
         throw new Error('Please fill in all fields for all items');
       }
 
+      // Validate stock availability
+      for (const item of items) {
+        const stockItem = availableStock.find(stock => stock.name === item.product);
+        if (!stockItem) {
+          throw new Error(`${item.product} is not available in stock`);
+        }
+        if (stockItem.availableQuantityKgs < parseFloat(item.quantity)) {
+          throw new Error(`Insufficient stock for ${item.product}. Available: ${stockItem.availableQuantityKgs} KGs`);
+        }
+      }
+
       // Create bill document
       const billData = {
         customerId: selectedCustomer,
@@ -106,8 +123,19 @@ const UploadBill = () => {
         })),
         grandTotal: grandTotal,
         createdAt: new Date().toISOString(),
+        issueDate: new Date().toISOString(),
         status: 'pending'
       };
+
+      // Update stock quantities
+      for (const item of items) {
+        const stockItem = availableStock.find(stock => stock.name === item.product);
+        const stockRef = doc(db, 'stock', stockItem.id);
+        await updateDoc(stockRef, {
+          availableQuantityKgs: increment(-parseFloat(item.quantity)),
+          availableQuantityBags: increment(-parseInt(item.boxes))
+        });
+      }
 
       // Add bill to Firestore
       const billsRef = collection(db, 'bills');
@@ -132,8 +160,7 @@ const UploadBill = () => {
   };
 
   return (
-    <AdminLayout>
-      <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-6">
         <h1 className="text-2xl font-bold mb-6">Upload Bill</h1>
 
         {error && (
@@ -160,11 +187,14 @@ const UploadBill = () => {
               required
             >
               <option value="">Select a customer</option>
-              {customers.map(customer => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name || customer.phone}
-                </option>
-              ))}
+              {customers.map(customer => {
+                const displayName = `${customer.name} ${customer.phone ? `(${customer.phone})` : ''}`;
+                return (
+                  <option key={customer.id} value={customer.id}>
+                    {displayName}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -182,10 +212,14 @@ const UploadBill = () => {
                     required
                   >
                     <option value="">Select product</option>
-                    {products.map(product => (
-                      <option key={product} value={product}>
-                        {product.charAt(0).toUpperCase() + product.slice(1)}
-                      </option>
+                    {availableStock
+                      .filter(stock => stock.availableQuantityKgs > 0)
+                      .map(stock => (
+                        <option key={stock.id} value={stock.name}>
+                          {stock.name.charAt(0).toUpperCase() + stock.name.slice(1)}
+                          {' '}
+                          ({stock.availableQuantityKgs} KGs available)
+                        </option>
                     ))}
                   </select>
                 </div>
@@ -284,8 +318,7 @@ const UploadBill = () => {
           </div>
         </form>
       </div>
-    </AdminLayout>
   );
 };
 
-export default UploadBill; 
+export default UploadBill;
