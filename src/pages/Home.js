@@ -1,15 +1,38 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { motion } from 'framer-motion';
+import { motion, useScroll, useSpring, AnimatePresence } from 'framer-motion';
 import { FaWhatsapp, FaShieldAlt, FaClock, FaCheckCircle } from 'react-icons/fa';
+import KAIntroScreen from '../components/KAIntroScreen';
+import CountUp from 'react-countup';
 
 const Home = () => {
+  const [showPopup, setShowPopup] = useState(false);
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, {
+    stiffness: 100,
+    damping: 30,
+    restDelta: 0.001
+  });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowPopup(true);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const fadeInUp = {
     initial: { opacity: 0, y: 20 },
     animate: { opacity: 1, y: 0 },
     transition: { duration: 0.6 }
   };
+
+  const metrics = [
+    { value: 30, label: 'Years in Business' },
+    { value: 30, label: 'Products Delivered' },
+    { value: 1000, label: 'Happy Customers' }
+  ];
 
   const testimonials = [
     { name: 'John Doe', text: 'Excellent service and quality products. Highly recommended!', role: 'Regular Customer' },
@@ -17,12 +40,23 @@ const Home = () => {
     { name: 'Mike Johnson', text: 'Professional team and reliable service every time.', role: 'Retailer' }
   ];
 
+  const [showIntro, setShowIntro] = useState(true);
+
+  const handleIntroComplete = () => {
+    setShowIntro(false);
+  };
+
   return (
     <Layout>
+      {showIntro && <KAIntroScreen onComplete={handleIntroComplete} />}
+      <motion.div
+        style={{ scaleX }}
+        className="fixed top-0 left-0 right-0 h-1 bg-primary-600 transform-origin-0 z-50"
+      />
       <div className="flex-grow">
         {/* Hero Section with Gradient */}
-        <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 text-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 text-white pt-0">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
             <motion.div 
               className="text-center"
               initial={{ opacity: 0, y: 20 }}
@@ -157,6 +191,75 @@ const Home = () => {
         >
           <FaWhatsapp className="h-6 w-6" />
         </motion.a>
+
+        {/* Metrics Section */}
+        <div className="py-16 bg-gray-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div 
+              className="grid grid-cols-1 gap-8 sm:grid-cols-3"
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={{
+                visible: { transition: { staggerChildren: 0.3 } }
+              }}
+            >
+              {metrics.map((metric, index) => (
+                <motion.div
+                  key={index}
+                  className="text-center"
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    visible: { opacity: 1, y: 0 }
+                  }}
+                >
+                  <CountUp
+                    end={metric.value}
+                    duration={2.5}
+                    suffix="+"
+                    className="text-4xl font-bold text-primary-600"
+                  />
+                  <p className="mt-2 text-lg text-gray-600">{metric.label}</p>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Call-to-Action Popup */}
+        <AnimatePresence>
+          {showPopup && (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-white p-6 rounded-lg shadow-xl z-40"
+            >
+              <button
+                onClick={() => setShowPopup(false)}
+                className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+              >
+                ×
+              </button>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Looking for bulk orders?
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Contact Kolla Agencies Now!
+              </p>
+              <motion.a
+                href="https://wa.me/919502386466"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full bg-primary-600 text-white text-center py-2 rounded-md hover:bg-primary-700 transition-colors"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                Contact Us
+              </motion.a>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </Layout>
   );

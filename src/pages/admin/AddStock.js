@@ -18,7 +18,10 @@ const AddStock = () => {
       try {
         const productsRef = collection(db, 'products');
         const querySnapshot = await getDocs(productsRef);
-        const productsList = querySnapshot.docs.map(doc => doc.data().name);
+        const productsList = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name
+        }));
         setProducts(productsList);
       } catch (error) {
         console.error('Error fetching products:', error);
@@ -54,7 +57,8 @@ const AddStock = () => {
       // Convert string values to numbers
       const stockData = {
         name: formData.name,
-        availableQuantityKgs: parseFloat(formData.availableQuantityKgs),
+        quantityKgs: parseFloat(formData.availableQuantityKgs), // Total quantity added
+        availableQuantityKgs: parseFloat(formData.availableQuantityKgs), // Current available quantity
         availableQuantityBags: parseInt(formData.availableQuantityBags),
         addedDate: formData.addedDate,
         addedTimestamp: new Date().toISOString(),
@@ -133,8 +137,8 @@ const AddStock = () => {
           >
             <option value="">Select a product</option>
             {products.map((product) => (
-              <option key={product} value={product}>
-                {product}
+              <option key={product.id} value={product.name}>
+                {product.name}
               </option>
             ))}
           </select>

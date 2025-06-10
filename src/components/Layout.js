@@ -77,7 +77,7 @@ const Layout = ({ children, requireAuth }) => {
       ))}
       
       {/* Main content */}
-      <main className="flex-grow relative z-10 pt-6 pb-[300px] sm:pb-[200px]">
+      <main className="flex-grow relative z-10 pb-[400px] sm:pb-[300px]">
         <AnimatePresence mode="wait">
           {children}
         </AnimatePresence>

@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Html, useLoader } from '@react-three/drei';
+import { OrbitControls, Html } from '@react-three/drei';
+import { useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { ErrorBoundary } from 'react-error-boundary';
 

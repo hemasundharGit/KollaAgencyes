@@ -59,15 +59,29 @@ const StockReport = () => {
 
   const fetchStockData = async () => {
     try {
+      // First fetch active products
+      const productsRef = collection(db, 'products');
+      const productsSnapshot = await getDocs(productsRef);
+      const activeProducts = new Set(productsSnapshot.docs.map(doc => doc.data().name));
+
+      // Then fetch stock data
       const stockRef = collection(db, 'stock');
       const querySnapshot = await getDocs(stockRef);
-      const items = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const items = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          // Ensure we have both quantityKgs and availableQuantityKgs
+          quantityKgs: data.quantityKgs || data.availableQuantityKgs || 0,
+          availableQuantityKgs: data.availableQuantityKgs || 0
+        };
+      }).filter(item => activeProducts.has(item.name)); // Only include active products
+      
       setStockData(items);
       calculateSummary(items);
     } catch (error) {
+      console.error('Error fetching stock data:', error);
       setError('Error fetching stock data');
     }
   };
@@ -135,7 +149,7 @@ const StockReport = () => {
     };
 
     items.forEach(item => {
-      // Calculate total stock added from initial quantity
+      // Use the correct fields for calculations
       const stockAdded = item.quantityKgs || 0;
       const stockLeft = item.availableQuantityKgs || 0;
       const stockSold = stockAdded - stockLeft;
@@ -143,6 +157,9 @@ const StockReport = () => {
       summary.totalStockAdded += stockAdded;
       summary.totalStockLeft += stockLeft;
       summary.totalStockSold += stockSold;
+
+      // Log the calculations for debugging
+      console.log(`${item.name}: Added=${stockAdded}, Left=${stockLeft}, Sold=${stockSold}`);
     });
 
     // Calculate most sold product
@@ -391,25 +408,40 @@ const StockReport = () => {
                               setSelectedProduct(item);
                               const productSales = salesData
                                 .filter(sale => {
-                                  return sale.items && 
-                                         Array.isArray(sale.items) && 
-                                         sale.items.some(saleItem => saleItem && saleItem.name && saleItem.name.toLowerCase() === item.name.toLowerCase());
+                                  if (!sale?.items || !Array.isArray(sale.items)) return false;
+                                  return sale.items.some(saleItem => 
+                                    saleItem?.name?.toLowerCase() === item.name.toLowerCase() && 
+                                    saleItem?.quantity && saleItem?.price
+                                  );
                                 })
                                 .map(sale => {
                                   const saleItem = sale.items.find(saleItem => 
-                                    saleItem && saleItem.name && saleItem.name.toLowerCase() === item.name.toLowerCase()
+                                    saleItem?.name?.toLowerCase() === item.name.toLowerCase()
                                   );
+                                  
+                                  if (!saleItem) return null;
+                                  
+                                  const quantity = parseFloat(saleItem.quantity);
+                                  const price = parseFloat(saleItem.price);
+                                  
+                                  if (isNaN(quantity) || isNaN(price)) return null;
+                                  
                                   return {
+                                    billId: sale.billId || sale.id || 'UNKNOWN',
                                     date: sale.createdAt ? new Date(sale.createdAt).toLocaleDateString() : 'N/A',
-                                    customerName: sale.customerName || 'N/A',
-                                    productName: item.name,
-                                    bags: saleItem?.bags || 'N/A',
-                                    quantity: parseFloat(saleItem?.quantity || 0).toFixed(2),
-                                    price: parseFloat(saleItem?.price || 0).toFixed(2),
-                                    billNo: sale.billNo || 'N/A'
+                                    customerName: sale.customerName || sale.customer?.name || 'N/A',
+                                    boxes: saleItem.boxes || 'N/A',
+                                    quantitySold: quantity.toFixed(3),
+                                    pricePerKg: `₹${price.toFixed(2)}`,
+                                    totalAmount: `₹${(quantity * price).toFixed(3)}`
                                   };
                                 })
-                                .sort((a, b) => new Date(b.date) - new Date(a.date));
+                                .filter(Boolean)
+                                .sort((a, b) => {
+                                  const dateA = new Date(a.date !== 'N/A' ? a.date : 0);
+                                  const dateB = new Date(b.date !== 'N/A' ? b.date : 0);
+                                  return dateB - dateA;
+                                });
                               setProductSalesLog(productSales);
                               setIsModalOpen(true);
                             } catch (error) {
@@ -479,59 +511,77 @@ const StockReport = () => {
                       <h4 className="text-lg font-medium text-gray-700">Sales History</h4>
                       {productSalesLog.length > 0 && (
                         <button
+                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                           onClick={() => {
                             const exportData = productSalesLog.map(log => ({
+                              'Bill ID': log.billId,
                               'Date': log.date,
-                              'Customer Name': log.customerName,
                               'Product Name': log.productName,
-                              'Quantity (KG)': log.quantity,
-                              'Bags/Boxes': log.bags,
-                              'Price': log.price,
-                              'Bill No': log.billNo
+                              'Customer Name': log.customerName,
+                              'Quantity (KG)': log.quantitySold,
+                              'Price per KG': log.pricePerKg,
+                              'Total Amount': log.totalAmount,
+                              'Boxes': log.boxes
                             }));
-                            const workbook = XLSX.utils.book_new();
-                            const worksheet = XLSX.utils.json_to_sheet(exportData);
-                            XLSX.utils.book_append_sheet(workbook, worksheet, 'Sales Log');
-                            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+
+                            const ws = XLSX.utils.json_to_sheet(exportData);
+                            const wb = XLSX.utils.book_new();
+                            XLSX.utils.book_append_sheet(wb, ws, 'Sales Log');
+                            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
                             const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                            saveAs(data, `sales_log_${selectedProduct?.name || 'all'}_${new Date().toLocaleDateString()}.xlsx`);
+                            saveAs(data, `sales_log_${selectedProduct?.name}_${new Date().toLocaleDateString()}.xlsx`);
                           }}
-                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                         >
                           Export to Excel
                         </button>
                       )}
                     </div>
-                    {productSalesLog.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer Name</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity (KG)</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bags</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bill No</th>
+
+                    <div className="overflow-x-auto">
+                      // Update the modal table headers and data display
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Bill ID
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Date
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Customer Name
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Boxes
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Quantity (KG)
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Price/KG
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Total Amount
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {productSalesLog.map((log, index) => (
+                            <tr key={index}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{log.billId}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.date}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.customerName}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{parseFloat(log.quantitySold).toFixed(2)}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{parseFloat(log.pricePerKg).toFixed(2)}</td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">₹{parseFloat(log.totalAmount).toFixed(2)}</td>
                             </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {productSalesLog.map((log, index) => (
-                              <tr key={index}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.date}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.customerName}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.quantity}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.bags}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.price}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.billNo}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                     ) : (
                       <p className="text-gray-500">No sales records found for this product.</p>
-                    )}
+                    ){'}'}
                   </div>
 
                   <div className="mt-4 flex justify-end space-x-3">

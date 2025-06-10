@@ -59,17 +59,38 @@ const CreateProduct = () => {
     }
   };
 
-  const handleDeleteProduct = async (productId) => {
+  const handleDeleteProduct = async (productId, productName) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     
     setDeleteLoading(true);
     try {
+      // Check if product has any stock
+      const stockRef = collection(db, 'stock');
+      const stockQuery = await getDocs(stockRef);
+      const stockItems = stockQuery.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      const productStock = stockItems.find(item => item.name === productName);
+      
+      if (productStock && productStock.availableQuantityKgs > 0) {
+        throw new Error('Cannot delete product with existing stock. Please ensure stock is zero before deleting.');
+      }
+
+      // Delete from products collection
       await deleteDoc(doc(db, 'products', productId));
+      
+      // Delete from stock collection if exists with zero quantity
+      if (productStock) {
+        await deleteDoc(doc(db, 'stock', productStock.id));
+      }
+
       fetchProducts(); // Refresh the list after deletion
       setSuccess('Product deleted successfully!');
     } catch (error) {
       console.error('Error deleting product:', error);
-      setError('Failed to delete product');
+      setError(error.message || 'Failed to delete product');
     } finally {
       setDeleteLoading(false);
     }

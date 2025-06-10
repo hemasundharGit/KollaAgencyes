@@ -19,12 +19,20 @@ const UploadBill = () => {
 
   const fetchAvailableStock = async () => {
     try {
+      // First fetch active products
+      const productsRef = collection(db, 'products');
+      const productsSnapshot = await getDocs(productsRef);
+      const activeProducts = new Set(productsSnapshot.docs.map(doc => doc.data().name));
+
+      // Then fetch stock data and filter by active products
       const stockRef = collection(db, 'stock');
       const querySnapshot = await getDocs(stockRef);
-      const stockItems = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const stockItems = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(item => activeProducts.has(item.name)); // Only include active products
       setAvailableStock(stockItems);
     } catch (error) {
       console.error('Error fetching stock:', error);
@@ -127,13 +135,34 @@ const UploadBill = () => {
         status: 'pending'
       };
 
-      // Update stock quantities
+      // Update stock quantities and create stock logs
       for (const item of items) {
         const stockItem = availableStock.find(stock => stock.name === item.product);
         const stockRef = doc(db, 'stock', stockItem.id);
+        
+        // Update stock quantities
         await updateDoc(stockRef, {
           availableQuantityKgs: increment(-parseFloat(item.quantity)),
           availableQuantityBags: increment(-parseInt(item.boxes))
+        });
+
+        // Get customer details
+        const customerDoc = customers.find(c => c.id === selectedCustomer);
+        const customerName = customerDoc ? customerDoc.name : 'Unknown';
+
+        // Create stock log entry
+        const logsRef = collection(db, 'stockLogs');
+        await addDoc(logsRef, {
+          productId: stockItem.id,
+          productName: item.product,
+          customerName: customerName,
+          action: 'sold',
+          quantity: parseFloat(item.quantity),
+          bags: parseInt(item.boxes),
+          cost: parseFloat(item.cost),
+          timestamp: new Date(),
+          referenceId: 'BILL-' + selectedCustomer,
+          remarks: `Sold ${item.quantity} KG (${item.boxes} bags) at ₹${item.cost} per KG`
         });
       }
 
